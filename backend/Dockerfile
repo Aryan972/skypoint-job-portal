@@ -14,6 +14,10 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
+# Prisma's query engine needs OpenSSL at runtime on Alpine. libc6-compat
+# pulls in glibc compatibility for the engine binary.
+RUN apk add --no-cache openssl libc6-compat
+
 COPY package.json package-lock.json* ./
 # package-lock.json is optional on first build; npm install handles both cases.
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
@@ -21,6 +25,8 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 # ---------- Stage 2: build ----------
 FROM node:20-alpine AS build
 WORKDIR /app
+
+RUN apk add --no-cache openssl libc6-compat
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -35,6 +41,8 @@ RUN npm prune --omit=dev
 # ---------- Stage 3: runtime ----------
 FROM node:20-alpine AS runtime
 WORKDIR /app
+
+RUN apk add --no-cache openssl libc6-compat
 
 ENV NODE_ENV=production
 
