@@ -68,25 +68,24 @@ The backend seeds these two accounts on first boot if they don't already exist.
 
 ## Architecture
 
-```
-┌────────────────────────┐     ┌──────────────────────────┐     ┌──────────────────┐
-│  Browser               │     │  Frontend container       │     │  Backend container│
-│  (React SPA)           │◄────│  nginx:1.27-alpine        │     │  node:20-alpine   │
-│                        │     │  serves /usr/share/nginx/ │     │  Express + Prisma │
-│  fetch /api/v1/...     │     │  html (Vite static build) │     │                   │
-│     │                  │     └──────────────────────────┘     │  - /auth/*        │
-│     │                  │                                       │  - /jobs/*        │
-│     └──────────────────────────────────────────────────────► │  - /applications/* │
-│        (CORS-allow-listed origin, Bearer JWT)                 │                   │
-│                                                                └────────┬─────────┘
-│                                                                          │ Prisma
-│                                                                ┌────────▼────────┐
-│                                                                │  Postgres        │
-│                                                                │  postgres:16     │
-│                                                                │  (named volume)  │
-└────────────────────────┘                                       └──────────────────┘
+```mermaid
+flowchart LR
+    Browser["🌐 Browser<br/>React SPA"]
 
-           docker-compose network: jobportal-net (bridge)
+    subgraph Compose["docker compose — network: jobportal-net"]
+        FE["frontend<br/>nginx:1.27-alpine<br/>serves Vite static build"]
+        BE["backend<br/>node:20-alpine<br/>Express + Prisma<br/>/auth /jobs /applications"]
+        DB["db<br/>postgres:16-alpine<br/>(named volume: postgres_data)"]
+    end
+
+    Browser -- "GET / (static SPA)" --> FE
+    Browser -- "fetch /api/v1/* (Bearer JWT, CORS allow-list)" --> BE
+    BE -- "Prisma" --> DB
+
+    style FE fill:#e0f2fe,stroke:#0369a1
+    style BE fill:#dcfce7,stroke:#15803d
+    style DB fill:#fef3c7,stroke:#a16207
+    style Browser fill:#f1f5f9,stroke:#475569
 ```
 
 **Request flow:** the browser loads the static SPA from nginx, then makes Bearer-authenticated `fetch` calls directly to the backend (`VITE_API_BASE_URL`, baked at build time). The backend validates the JWT, loads the user from Postgres on every request (so disabled users are locked out immediately), runs Zod input validation, and then the per-module service layer enforces ownership and role rules before touching the database via Prisma.
@@ -220,7 +219,9 @@ All responses are JSON. Errors share a single envelope:
 
 ## Running tests
 
-The backend ships an integration suite (Vitest + Supertest, 41 tests covering auth / jobs / applications including ownership and rate-limit-bypass-in-test).
+The repo ships **82 tests** across two suites — 54 backend (Vitest + Supertest against real Postgres) and 28 frontend (Vitest + React Testing Library in jsdom). Both run on every push via GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+
+### Backend
 
 ```bash
 # Spin up a throwaway test Postgres
@@ -236,14 +237,27 @@ TEST_DATABASE_URL="postgresql://test:test@localhost:54320/jobportal_test" npm te
 docker rm -f jp-test-db
 ```
 
-**What's covered:**
+**Backend coverage:**
+- Password policy (unit, no DB): every rule (length, upper, lower, digit, special), reports all missing classes in one error, bcrypt hash/verify round-trip, malformed-hash returns false.
 - Auth: register happy path, weak password, malformed email, duplicate email; login good path, wrong password, unknown email (both return the same generic 401 so emails can't be enumerated); `/me` with valid / missing / invalid tokens.
 - Jobs: public listing, case-insensitive search, pagination, `postedByMe` scoping, HR-only create, salary range validation, and **the cross-tenant ownership check** — HR-B trying to update or delete HR-A's job returns 404, not 403.
 - Applications: candidate apply happy path, duplicate apply returns 409 (both pre-check and race-condition path), closed-job returns 400, missing-job returns 404, HR-cannot-apply 403, "list mine" is scoped to the caller, "list for job" requires HR ownership, status update requires HR ownership, single-detail visibility is restricted to the owning candidate OR owning HR.
 
 The integration suite truncates all tables between tests so order doesn't matter.
 
-Type-checking (covers source and emits no JS):
+### Frontend
+
+```bash
+cd frontend
+npm test
+```
+
+**Frontend coverage:**
+- UI primitives — `StatusBadge`, `Pagination` (disabled-at-edges + onChange), `EmptyState`, `ErrorBanner` (ApiClientError vs. plain Error vs. non-Error), `JobCard` (open/closed badge, salary range, conditional applicant count, link to detail).
+- `ProtectedRoute` — anonymous visitor redirected to /login; authenticated user sees content; wrong-role user sees a friendly 403 screen.
+- `RegisterPage` — empty-submit shows inline errors, password missing character classes surfaces the right rule message, valid password keeps the policy hint visible.
+
+### Type-checking
 
 ```bash
 cd backend  && npm run lint     # tsc --noEmit
@@ -300,7 +314,7 @@ Honest list of things intentionally scoped out so the assessor knows what was a 
 - **JWT in localStorage.** Pragmatic for a take-home — Bearer tokens, no CSRF story to invent. A production deployment with sensitive data would move to HttpOnly cookies + CSRF tokens.
 - **No refresh tokens.** A single short-lived access token (default 1h). Re-login is required after expiry.
 - **In-memory rate limiter.** Fine for a single backend container; for a multi-instance deploy, swap to `rate-limit-redis`.
-- **No frontend tests.** The backend integration suite covers the API contract end-to-end. Frontend unit/E2E tests would be additive, not a substitute. The codebase is set up for a Vitest + Testing Library addition.
+- **No end-to-end tests.** The 82 unit/integration tests cover the API contract and the UI primitives independently. A Playwright suite that drives the real Docker stack end-to-end would be the next logical addition.
 - **No application-side filtering of HR access.** An HR can see the `jobs` listing but the `postedByMe=true` filter is required to scope to their own — there is no separate "HR-only listing" route. This is documented behaviour, not a leak.
 - **Seeded credentials are well-known.** `Admin@1234` / `User@1234` are for evaluation only. The seed script is no-op if the users already exist, so a real deploy with `SEED_*` unset will skip them entirely.
 - **No production reverse proxy.** Each service is exposed via its own port mapping. In production, you'd front the stack with a single TLS-terminating proxy and put the backend behind it.
