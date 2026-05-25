@@ -1,22 +1,16 @@
 /**
  * Auth router.
  *
- * `wrap` adapts async handlers so any thrown error (or rejected promise) is
- * forwarded to Express's error middleware. Without it, you have to remember
- * to try/catch in every handler — easy to forget.
+ * Uses the shared `wrap` helper from `shared/wrap.ts` so any thrown error or
+ * rejected promise in async handlers gets forwarded to the error middleware.
  */
 
-import { Router, type RequestHandler } from 'express';
+import { Router } from 'express';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/auth.js';
+import { wrap } from '../../shared/wrap.js';
 import { loginSchema, registerSchema } from './auth.schema.js';
 import * as controller from './auth.controller.js';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const wrap = (fn: (req: any, res: any, next: any) => unknown): RequestHandler =>
-  (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
 
 const router = Router();
 
