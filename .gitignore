@@ -21,6 +21,7 @@ backend/prisma/migrations/dev.db*
 # IDE / OS
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 .DS_Store
