@@ -1,32 +1,18 @@
-import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { ApiClientError, request } from '../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { request } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import { Spinner } from '../components/Spinner';
 import { ErrorBanner } from '../components/ErrorBanner';
+import { JobApplyForm } from '../components/JobApplyForm';
 import { formatDate, formatSalary } from '../lib/format';
-import type { Application, Job } from '../types/api';
-
-const coverSchema = z.object({
-  coverLetter: z
-    .string()
-    .trim()
-    .min(20, 'At least 20 characters')
-    .max(5000, 'At most 5000 characters'),
-});
-type CoverValues = z.infer<typeof coverSchema>;
+import type { Job } from '../types/api';
 
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const jobId = Number.parseInt(id ?? '', 10);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const qc = useQueryClient();
-  const [submitted, setSubmitted] = useState(false);
 
   const jobQuery = useQuery({
     queryKey: ['job', jobId],
@@ -34,28 +20,9 @@ export function JobDetailPage() {
     enabled: Number.isFinite(jobId) && jobId > 0,
   });
 
-  const applyMutation = useMutation({
-    mutationFn: (values: CoverValues) =>
-      request<{ application: Application }>(`/jobs/${jobId}/applications`, {
-        method: 'POST',
-        body: values,
-      }),
-    onSuccess: () => {
-      setSubmitted(true);
-      qc.invalidateQueries({ queryKey: ['applications', 'me'] });
-    },
-  });
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<CoverValues>({ resolver: zodResolver(coverSchema) });
-
   if (!Number.isFinite(jobId) || jobId <= 0) {
     return <ErrorBanner error={new Error('Invalid job id')} />;
   }
-
   if (jobQuery.isLoading) {
     return (
       <div className="py-12">
@@ -90,9 +57,7 @@ export function JobDetailPage() {
           >
             {job.isOpen ? 'Open' : 'Closed'}
           </span>
-          {salary ? (
-            <span className="text-sm text-slate-700">{salary}</span>
-          ) : null}
+          {salary ? <span className="text-sm text-slate-700">{salary}</span> : null}
         </div>
 
         <div className="card mt-6 whitespace-pre-line p-6 text-sm text-slate-700">
@@ -103,99 +68,47 @@ export function JobDetailPage() {
       <aside className="lg:col-span-1">
         <div className="card sticky top-6 p-5">
           {user?.role === 'HR' && user.id === job.postedById ? (
-            <>
-              <h2 className="text-sm font-semibold text-slate-900">Your job</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                You posted this. View applicants from the HR dashboard.
-              </p>
-              <button
-                type="button"
-                className="btn-primary mt-3 w-full"
-                onClick={() => navigate(`/hr/jobs/${job.id}/applicants`)}
-              >
-                View applicants
-              </button>
-              <button
-                type="button"
-                className="btn-secondary mt-2 w-full"
-                onClick={() => navigate(`/hr/jobs/${job.id}/edit`)}
-              >
-                Edit job
-              </button>
-            </>
+            <HrOwnerPanel jobId={job.id} onApplicants={() => navigate(`/hr/jobs/${job.id}/applicants`)} onEdit={() => navigate(`/hr/jobs/${job.id}/edit`)} />
           ) : user?.role === 'CANDIDATE' ? (
-            submitted ? (
-              <div>
-                <h2 className="text-sm font-semibold text-emerald-800">
-                  Application submitted
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  We've sent your application to the hiring team. Track its status from{' '}
-                  <Link to="/my-applications" className="font-medium text-brand-700 hover:underline">
-                    My applications
-                  </Link>
-                  .
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit((v) => applyMutation.mutate(v))} noValidate>
-                <h2 className="text-sm font-semibold text-slate-900">Apply for this role</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Tell the team why you're a good fit. {20}–{5000} characters.
-                </p>
-                <textarea
-                  rows={6}
-                  className="input mt-3"
-                  placeholder="Your cover letter…"
-                  disabled={!job.isOpen || applyMutation.isPending}
-                  {...register('coverLetter')}
-                />
-                {errors.coverLetter ? (
-                  <p className="mt-1 text-xs text-red-600">{errors.coverLetter.message}</p>
-                ) : null}
-                {applyMutation.error ? (
-                  <div className="mt-2">
-                    <ErrorBanner
-                      error={applyMutation.error}
-                      title={
-                        applyMutation.error instanceof ApiClientError &&
-                        applyMutation.error.status === 409
-                          ? "You've already applied"
-                          : 'Could not submit application'
-                      }
-                    />
-                  </div>
-                ) : null}
-                <button
-                  type="submit"
-                  className="btn-primary mt-3 w-full"
-                  disabled={!job.isOpen || isSubmitting || applyMutation.isPending}
-                >
-                  {!job.isOpen
-                    ? 'Job is closed'
-                    : applyMutation.isPending
-                      ? 'Submitting…'
-                      : 'Submit application'}
-                </button>
-              </form>
-            )
+            <JobApplyForm jobId={job.id} isOpen={job.isOpen} />
           ) : user?.role === 'HR' ? (
             <p className="text-sm text-slate-500">
               HR users can&apos;t apply to jobs. Switch to a candidate account to apply.
             </p>
           ) : (
-            <>
-              <h2 className="text-sm font-semibold text-slate-900">Interested?</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Log in or create an account to apply.
-              </p>
-              <Link to="/login" className="btn-primary mt-3 inline-flex w-full justify-center">
-                Log in to apply
-              </Link>
-            </>
+            <LoggedOutCta />
           )}
         </div>
       </aside>
     </div>
+  );
+}
+
+function HrOwnerPanel({ onApplicants, onEdit }: { jobId: number; onApplicants: () => void; onEdit: () => void }) {
+  return (
+    <>
+      <h2 className="text-sm font-semibold text-slate-900">Your job</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        You posted this. View applicants from the HR dashboard.
+      </p>
+      <button type="button" className="btn-primary mt-3 w-full" onClick={onApplicants}>
+        View applicants
+      </button>
+      <button type="button" className="btn-secondary mt-2 w-full" onClick={onEdit}>
+        Edit job
+      </button>
+    </>
+  );
+}
+
+function LoggedOutCta() {
+  return (
+    <>
+      <h2 className="text-sm font-semibold text-slate-900">Interested?</h2>
+      <p className="mt-1 text-sm text-slate-500">Log in or create an account to apply.</p>
+      <Link to="/login" className="btn-primary mt-3 inline-flex w-full justify-center">
+        Log in to apply
+      </Link>
+    </>
   );
 }
