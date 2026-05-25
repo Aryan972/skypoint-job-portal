@@ -48,6 +48,9 @@ function readSeedUsers(): SeedUser[] {
   return users;
 }
 
+// A mix of open and closed roles so the "isOpen" filter on the listing page
+// has something to do on first boot. `isOpen` defaults to true at the schema
+// level, so we only set it explicitly when we want a job marked as closed.
 const SAMPLE_JOBS = [
   {
     title: 'Senior Backend Engineer',
@@ -80,6 +83,7 @@ const SAMPLE_JOBS = [
     location: 'Remote',
     salaryMin: 90000,
     salaryMax: 130000,
+    isOpen: false, // Position filled — keeps the closed-filter demoable.
   },
   {
     title: 'Data Analyst',
@@ -96,6 +100,7 @@ const SAMPLE_JOBS = [
     location: 'Remote',
     salaryMin: 70000,
     salaryMax: 95000,
+    isOpen: false, // Closed — pipeline paused while we hire the EM first.
   },
   {
     title: 'Engineering Manager',
@@ -128,6 +133,7 @@ const SAMPLE_JOBS = [
     location: 'Remote',
     salaryMin: 65000,
     salaryMax: 90000,
+    isOpen: false, // Closed — backlog covered by the docs contractor for now.
   },
   {
     title: 'Mobile Engineer (iOS)',
