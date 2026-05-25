@@ -14,6 +14,10 @@ import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import jobsRoutes from './modules/jobs/jobs.routes.js';
+import {
+  applicationsRouter,
+  jobApplicationsRouter,
+} from './modules/applications/applications.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -49,8 +53,10 @@ export function createApp(): Express {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
- api.use('/auth', authRoutes);
- api.use('/jobs', jobsRoutes);
+  api.use('/auth', authRoutes);
+  api.use('/jobs', jobsRoutes);
+  api.use('/jobs/:jobId/applications', jobApplicationsRouter);
+  api.use('/applications', applicationsRouter);
 
   app.use('/api/v1', api);
 
