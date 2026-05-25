@@ -25,9 +25,10 @@ Prerequisites: **Docker** with Compose v2 (Docker Desktop, OrbStack, or Colima).
 ```bash
 git clone https://github.com/Aryan972/skypoint-job-portal.git
 cd skypoint-job-portal
-cp .env.example .env
 docker compose up --build
 ```
+
+That's it — every variable in `docker-compose.yml` has a sensible default, so a fresh clone boots cleanly with no extra files. To override anything (ports, secrets, seeded credentials), copy `.env.example` to `.env` and edit it; Compose picks `.env` up automatically.
 
 When all three services are healthy:
 
