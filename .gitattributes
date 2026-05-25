@@ -1,0 +1,16 @@
+# Normalize line endings across platforms.
+# All text files use LF in the repo by default.
+* text=auto eol=lf
+
+# Shell scripts and Dockerfiles must keep LF — they run in Linux containers.
+*.sh         text eol=lf
+Dockerfile   text eol=lf
+*.dockerfile text eol=lf
+
+# Binary files: don't touch.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary

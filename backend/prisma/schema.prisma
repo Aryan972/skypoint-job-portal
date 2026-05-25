@@ -1,0 +1,88 @@
+// Prisma schema for the Job Portal.
+//
+// Design notes:
+// - `Job.postedById` is the ownership anchor used for authorization. Every
+//   mutation on a job verifies `job.postedById === req.user.id` to prevent
+//   the cross-tenant bug that affected an earlier iteration.
+// - `Application` has a composite unique constraint on (jobId, candidateId)
+//   so the database itself prevents duplicate applications even if a buggy
+//   client retries the POST.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  HR
+  CANDIDATE
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  REVIEWED
+  SHORTLISTED
+  REJECTED
+  HIRED
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  passwordHash   String
+  fullName       String
+  role           UserRole
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  jobsPosted     Job[]          @relation("PostedJobs")
+  applications   Application[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model Job {
+  id           Int       @id @default(autoincrement())
+  title        String
+  description  String
+  location     String
+  salaryMin    Int?
+  salaryMax    Int?
+  isOpen       Boolean   @default(true)
+  postedById   Int
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  postedBy     User          @relation("PostedJobs", fields: [postedById], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([postedById])
+  @@index([isOpen])
+  @@index([location])
+  @@map("jobs")
+}
+
+model Application {
+  id           Int               @id @default(autoincrement())
+  jobId        Int
+  candidateId  Int
+  coverLetter  String
+  status       ApplicationStatus @default(SUBMITTED)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  job          Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate    User @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, candidateId], name: "uniq_application_per_candidate_per_job")
+  @@index([jobId])
+  @@index([candidateId])
+  @@index([status])
+  @@map("applications")
+}
